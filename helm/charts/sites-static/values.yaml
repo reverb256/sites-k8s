@@ -1,3 +1,8 @@
+# Replicas: 2 (one per node via required anti-affinity). The site is a static
+# git-sync + nginx pair, so a second replica costs ~64Mi and survives a node
+# loss.
+replicaCount: 2
+
 git:
   repo: https://github.com/reverb256/sites.git
   branch: main

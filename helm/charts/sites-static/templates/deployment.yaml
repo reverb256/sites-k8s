@@ -5,7 +5,7 @@ metadata:
   labels:
     app: {{ .Release.Name }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount | default 1 }}
   selector:
     matchLabels:
       app: {{ .Release.Name }}
@@ -39,6 +39,13 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: In
                     values: ["sentry"]
+        podAntiAffinity:
+          # One replica per node — a second pod on the same node adds nothing.
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: {{ .Release.Name }}
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: nginx
           image: {{ .Values.image.nginx | quote }}
