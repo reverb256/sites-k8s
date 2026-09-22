@@ -2,6 +2,11 @@ git:
   repo: https://github.com/reverb256/sites.git
   branch: main
   period: 60s
+  # git-sync default is 0, which terminates the container on the FIRST failed
+  # sync. That is why git-sync exited 1 (5 restarts) on a transient
+  # "Could not resolve host: github.com". Negative retries forever; a DNS blip
+  # or an upstream outage must not restart the pod.
+  maxFailures: -1
 
 image:
   nginx: docker.io/library/nginx:stable-alpine

@@ -65,8 +65,13 @@ spec:
             - --ref={{ .Values.git.branch }}
             - --period={{ .Values.git.period }}
             - --root=/git
-            - --dest=site
+            # v4 renamed --dest to --link (git-sync itself logged the
+            # deprecation: "Flag --dest has been deprecated, use --link").
+            - --link=site
             - --depth=1
+            # maxFailures defaults to 0 = abort on the FIRST failed sync, which
+            # is what exited 1 on a transient "Could not resolve host".
+            - --max-failures={{ .Values.git.maxFailures }}
           volumeMounts:
             - name: www
               mountPath: /git
