@@ -16,6 +16,29 @@ spec:
     spec:
       securityContext:
         fsGroup: 65533
+      # zephyr is LAST-RESORT for scheduling (j_kro directive 2026-09-22):
+      # never schedule here; prefer nexus/sentry.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: ["zephyr"]
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["nexus"]
+            - weight: 90
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["sentry"]
       containers:
         - name: nginx
           image: {{ .Values.image.nginx | quote }}
