@@ -1,0 +1,22 @@
+git:
+  repo: https://github.com/reverb256/sites.git
+  branch: main
+  period: 60s
+
+image:
+  nginx: docker.io/library/nginx:stable-alpine
+  gitSync: registry.k8s.io/git-sync/git-sync:v4.7.1
+
+resources:
+  nginx:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+  gitSync:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: sites-static
+description: >-
+  Static site server for sites.reverb256.dev — serves the reverb256/sites repo
+  (site-agency publish surface) via nginx + git-sync.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"

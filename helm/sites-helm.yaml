@@ -1,0 +1,32 @@
+# Root app-of-apps for the sites stack. Manages child Applications under helm/apps/.
+# Bootstrap once: kubectl -n argocd apply -f helm/sites-helm.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sites-helm
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  source:
+    repoURL: https://github.com/reverb256/sites-k8s.git
+    targetRevision: main
+    path: helm/apps
+    directory:
+      recurse: false
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - PruneLast=true
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      jsonPointers:
+        - /metadata/annotations/argocd.argoproj.io~1refresh
+        - /operation
