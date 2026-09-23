@@ -63,6 +63,11 @@ spec:
               mkdir -p /site/deploy
               printf '%s\n' "${GIT_REPO}@${rev}" > /site/deploy/.seeded-from
               echo "seeded /site from ${GIT_REPO}@${rev}"
+          securityContext:
+            # write the volume as root: the tree is then readable by nginx and
+            # writable by the approval API regardless of CSI fsGroup semantics.
+            runAsUser: 0
+            runAsGroup: 0
           env:
             - name: GIT_REPO
               value: {{ .Values.git.repo | quote }}
