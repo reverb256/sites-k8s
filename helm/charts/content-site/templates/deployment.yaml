@@ -17,6 +17,10 @@ spec:
       labels:
         app: {{ .Release.Name }}
     spec:
+      # fsGroup: the seed container runs as git-sync's unprivileged user
+      # (nobody/65533) and must be able to write the freshly provisioned volume.
+      securityContext:
+        fsGroup: 65533
       # zephyr is a workstation: never schedule here (standing directive).
       affinity:
         nodeAffinity:
