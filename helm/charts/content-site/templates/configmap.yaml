@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-nginx
+data:
+  default.conf: |
+    server {
+      listen 8080;
+      server_name _;
+      root /site;
+      index index.html;
+
+      add_header X-Served-By "content-site-k8s" always;
+
+      # The showcase discovers the media tree by scraping THIS autoindex
+      # (index.html -> discover('/media/')). Without autoindex the page renders
+      # "No media files found" against a perfectly good tree.
+      location /media/ {
+        autoindex on;
+        autoindex_exact_size off;
+        autoindex_localtime on;
+        try_files $uri $uri/ =404;
+      }
+
+      # Never serve the deployment script or the approval runtime state.
+      location ^~ /deploy/ { deny all; }
+      location ^~ /pending/ { deny all; }
+      location = /approval-log.jsonl { deny all; }
+
+      location / {
+        try_files $uri $uri/ =404;
+      }
+    }

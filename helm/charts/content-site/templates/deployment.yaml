@@ -1,0 +1,130 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    # RWO volume: never run two pods against it at once.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}
+    spec:
+      # zephyr is a workstation: never schedule here (standing directive).
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values: ["zephyr"]
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["nexus"]
+            - weight: 90
+              preference:
+                matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: In
+                    values: ["sentry-agent"]
+      initContainers:
+        - name: seed
+          image: {{ .Values.image.git | quote }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              if [ -f /site/index.html ] && [ "${SEED_FORCE}" != "true" ]; then
+                echo "volume already seeded (set seed.force=true to re-seed): $(cat /site/deploy/.seeded-from 2>/dev/null || echo unknown)"
+                exit 0
+              fi
+              rm -rf /tmp/src
+              git clone --depth=1 --branch "${GIT_BRANCH}" "${GIT_REPO}" /tmp/src
+              rev="$(git -C /tmp/src rev-parse HEAD)"
+              rm -rf /tmp/src/.git
+              mkdir -p /site
+              cp -a /tmp/src/. /site/
+              mkdir -p /site/deploy
+              printf '%s\n' "${GIT_REPO}@${rev}" > /site/deploy/.seeded-from
+              echo "seeded /site from ${GIT_REPO}@${rev}"
+          env:
+            - name: GIT_REPO
+              value: {{ .Values.git.repo | quote }}
+            - name: GIT_BRANCH
+              value: {{ .Values.git.branch | quote }}
+            - name: SEED_FORCE
+              value: {{ .Values.seed.force | quote }}
+          volumeMounts:
+            - name: site
+              mountPath: /site
+          resources:
+            {{- toYaml .Values.resources.seed | nindent 12 }}
+      containers:
+        - name: nginx
+          image: {{ .Values.image.nginx | quote }}
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: site
+              mountPath: /site
+              readOnly: true
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources.nginx | nindent 12 }}
+        - name: approval
+          image: {{ .Values.image.python | quote }}
+          command: ["python3", "/site/deploy/approval_api.py"]
+          args:
+            - --host=0.0.0.0
+            - --port=8791
+            - --media-root=/site/media
+            - --log-path=/site/approval-log.jsonl
+            - --pending-dir=/site/pending
+          ports:
+            - containerPort: 8791
+              name: approval
+          volumeMounts:
+            - name: site
+              mountPath: /site
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8791
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8791
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources.approval | nindent 12 }}
+      volumes:
+        - name: site
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-data
+        - name: nginx-conf
+          configMap:
+            name: {{ .Release.Name }}-nginx

@@ -1,0 +1,46 @@
+# Single replica: the site tree is an RWO volume (the approval API rewrites
+# asset sidecars in place), so a second replica cannot mount it. The cost of a
+# node loss is a restarted pod on the surviving nodes, not lost content.
+replicaCount: 1
+
+git:
+  repo: https://github.com/reverb256/content-lan
+  branch: main
+
+seed:
+  # The served tree is runtime state, not git state: the approval API changes
+  # asset sidecars in place, so re-seeding would throw those decisions away.
+  # The init container therefore only seeds an EMPTY volume. To adopt content
+  # changes from git: set force=true and restart, or delete the PVC.
+  force: "false"
+
+image:
+  nginx: docker.io/library/nginx:stable-alpine
+  git: registry.k8s.io/git-sync/git-sync:v4.7.1
+  python: docker.io/library/python:3.13-alpine
+
+storage:
+  # longhorn: replicated on the cluster nodes only (zephyr is not a longhorn
+  # node, so no replica of this volume — i.e. no site data — can land there).
+  className: longhorn
+  size: 3Gi
+
+resources:
+  nginx:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 192Mi
+  approval:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+  seed:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
