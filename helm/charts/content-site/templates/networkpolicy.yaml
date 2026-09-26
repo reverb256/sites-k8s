@@ -66,7 +66,7 @@ spec:
               kubernetes.io/metadata.name: media-reverse-proxy
         - ipBlock: {cidr: 10.1.1.0/24}
       ports:
-        - {protocol: TCP, port: 80}
+        - {protocol: TCP, port: 8080}
         - {protocol: TCP, port: 8791}
 ---
 apiVersion: networking.k8s.io/v1
