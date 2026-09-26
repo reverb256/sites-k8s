@@ -1,10 +1,13 @@
 {{/*
   sites-static - network isolation (breach containment).
 
-  Verified pattern (proven on the quill/astral rollouts 2026-09-25/26):
-  default-deny, then explicit allows. The 10.1.1.0/24 entries exist because
-  Calico evaluates ClusterIP traffic PRE-DNAT - cross-node service flows
-  arrive SNATed to a node IP and label selectors alone would not match.
+  Namespace policy layout (two charts share ns `sites`):
+  - THIS chart owns the namespace-wide default-deny (catches every pod,
+    including unlabeled strays).
+  - Every allow is label-scoped so one chart's grants never cover the
+    other app's pods (found and fixed during bring-up: ns-wide allows in
+    content-site would have leaked internet egress to sites-static).
+  - 10.1.1.0/24 sources = Calico pre-DNAT service flows (see quill rollout).
   Static file server: no internet egress is granted at all.
 */}}
 {{- $ns := .Release.Namespace }}
@@ -23,7 +26,8 @@ metadata:
   name: sites-static-allow-dns
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: sites-static}
   policyTypes: [Egress]
   egress:
     - to:
@@ -43,17 +47,20 @@ metadata:
   name: sites-static-allow-intra
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: sites-static}
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
-        - podSelector: {}
+        - podSelector:
+            matchLabels: {app: sites-static}
         - ipBlock: {cidr: 10.1.1.0/24}
       ports:
         - {protocol: TCP, port: 80}
   egress:
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchLabels: {app: sites-static}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -61,7 +68,8 @@ metadata:
   name: sites-static-allow-edge
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: sites-static}
   policyTypes: [Ingress]
   ingress:
     - from:

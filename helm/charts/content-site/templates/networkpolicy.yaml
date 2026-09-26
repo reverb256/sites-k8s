@@ -1,27 +1,20 @@
 {{/*
   content-site - network isolation (breach containment).
 
-  Same verified pattern as sites-static, plus internet egress (the site
-  fetches external content); private ranges (LAN, pod net, tailnet,
-  link-local, loopback) stay excluded everywhere.
+  All allows are label-scoped to app=content-site so they cannot cover
+  sites-static pods in the shared namespace (the ns-wide default-deny is
+  owned by the sites-static chart). Internet egress excludes every private
+  range (LAN, pod net, tailnet, link-local, loopback).
 */}}
 {{- $ns := .Release.Namespace }}
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: content-site-default-deny
-  namespace: {{ $ns }}
-spec:
-  podSelector: {}
-  policyTypes: [Ingress, Egress]
----
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: content-site-allow-dns
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: content-site}
   policyTypes: [Egress]
   egress:
     - to:
@@ -41,15 +34,18 @@ metadata:
   name: content-site-allow-intra
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: content-site}
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
-        - podSelector: {}
+        - podSelector:
+            matchLabels: {app: content-site}
         - ipBlock: {cidr: 10.1.1.0/24}
   egress:
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchLabels: {app: content-site}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -57,7 +53,8 @@ metadata:
   name: content-site-allow-edge
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: content-site}
   policyTypes: [Ingress]
   ingress:
     - from:
@@ -78,7 +75,8 @@ metadata:
   name: content-site-allow-internet-egress
   namespace: {{ $ns }}
 spec:
-  podSelector: {}
+  podSelector:
+    matchLabels: {app: content-site}
   policyTypes: [Egress]
   egress:
     - to:
