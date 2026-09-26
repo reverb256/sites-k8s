@@ -1,0 +1,76 @@
+{{/*
+  sites-static - network isolation (breach containment).
+
+  Verified pattern (proven on the quill/astral rollouts 2026-09-25/26):
+  default-deny, then explicit allows. The 10.1.1.0/24 entries exist because
+  Calico evaluates ClusterIP traffic PRE-DNAT - cross-node service flows
+  arrive SNATed to a node IP and label selectors alone would not match.
+  Static file server: no internet egress is granted at all.
+*/}}
+{{- $ns := .Release.Namespace }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sites-static-default-deny
+  namespace: {{ $ns }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sites-static-allow-dns
+  namespace: {{ $ns }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sites-static-allow-intra
+  namespace: {{ $ns }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+        - ipBlock: {cidr: 10.1.1.0/24}
+      ports:
+        - {protocol: TCP, port: 80}
+  egress:
+    - to:
+        - podSelector: {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sites-static-allow-edge
+  namespace: {{ $ns }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cloudflared
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: media-reverse-proxy
+        - ipBlock: {cidr: 10.1.1.0/24}
+      ports:
+        - {protocol: TCP, port: 80}
