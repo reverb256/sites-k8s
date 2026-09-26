@@ -1,0 +1,24 @@
+name: netpol-validation
+
+on:
+  push:
+    paths:
+      - 'helm/charts/**'
+      - 'scripts/check-netpol.py'
+      - '.github/workflows/netpol-validation.yaml'
+  pull_request:
+    paths:
+      - 'helm/charts/**'
+
+jobs:
+  netpol-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.2.1
+      - name: Install PyYAML
+        run: python3 -m pip install --quiet pyyaml
+      - name: Check rendered policy ports + scoping
+        run: python3 scripts/check-netpol.py
