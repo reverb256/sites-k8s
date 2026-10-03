@@ -1,0 +1,16 @@
+# Consumed by the CronJob; recreated on every sync.
+# Longhorn: replicated on cluster nodes only. zephyr is not a Longhorn node, so
+# no replica of agency_output (consent records) can land there.
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: "{{ .Release.Name }}-output"
+  namespace: "{{ .Release.Namespace }}"
+  labels:
+    app: "{{ .Release.Name }}"
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.storage.output.className }}
+  resources:
+    requests:
+      storage: {{ .Values.storage.output.size }}

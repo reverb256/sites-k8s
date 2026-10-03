@@ -1,0 +1,71 @@
+# Scheduled run of the site-agency pipeline (owner-directed #29: "re-host
+# scheduled runs as a k8s CronJob ... pin to nexus/sentry, never zephyr").
+#
+# Gate: `suspend: true` ships the schedule OFF. Flip to false once BOTH
+# prerequisites exist:
+#   1. Bitwarden item `site-agency-env` holding the pipeline .env contents
+#      (LLM key, GITHUB_TOKEN with push rights on reverb256/sites, mail creds).
+#   2. The publish clone target reverb256/sites is reachable with that token
+#      (scripts/preflight_publish.py checks this; see the preflight job below).
+# Rationale: a running schedule with a missing secret would fail every night
+# and, until the loud-publish fix lands, fail QUIETLY. Gate first.
+
+suspend: true
+
+# 09:00 America/Chicago (owner: "Daily 9am"). CronJob timeZone keeps this
+# stable across DST instead of drifting with the UTC offset.
+schedule: "0 9 * * *"
+timeZone: America/Chicago
+
+image:
+  python: docker.io/library/python:3.11-slim
+
+git:
+  # Pipeline source and the publish surface it writes into.
+  agencyRepo: https://github.com/reverb256/site-agency.git
+  agencyBranch: main
+  publishRepo: https://github.com/reverb256/sites.git
+  publishBranch: main
+  # pipeline.py hardcodes this path for the publish clone; the job recreates it.
+  publishPath: /home/j_kro/Projects/reverb256.dev
+
+# Secret -> file. The ExternalSecret below materialises the bitwarden item
+# `site-agency-env` into namespace-local Secret `site-agency-env` with a key
+# `env` whose value is the whole .env file.
+envSecret:
+  name: site-agency-env
+  remoteKey: site-agency-env
+  refreshInterval: 1h
+
+storage:
+  # agency_output: consent DB (agency.db), sites/, run summaries. Runtime state,
+  # not git state — must survive a job. RWO, single writer (concurrencyPolicy
+  # Forbid).
+  output:
+    className: longhorn
+    size: 5Gi
+
+job:
+  # A full run is minutes (no GPU this pass); 1h is generous and stops a wedged
+  # run from holding the schedule slot.
+  activeDeadlineSeconds: 3600
+  # One attempt only: a failed run is a real failure, not a flake to retry
+  # blindly. The state machine resumes unfinished leads on the next tick.
+  backoffLimit: 0
+  # Keep enough history to debug a publish that silently no-opped (task #29.3).
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  ttlSecondsAfterFinished: 86400
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+# The one env var the pipeline cannot discover itself: where ComfyUI lives.
+# Image gen is out of scope this pass, so this is left unset; when a GPU window
+# is approved, point it at the nexus ComfyUI service.
+comfyuiUrl: ""

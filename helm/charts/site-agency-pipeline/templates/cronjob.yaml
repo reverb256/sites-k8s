@@ -1,0 +1,161 @@
+# site-agency-pipeline CronJob.
+#
+# Pinned to nexus/sentry (owner addendum #29): zephyr is excluded by a REQUIRED
+# node affinity, not a preference. Run shape:
+#   1. source the pipeline .env from the ExternalSecret-backed Secret
+#   2. shallow-clone the pipeline repo into an emptyDir
+#   3. drop .env in place (the runner refuses to start without it)
+#   4. shallow-clone the publish surface reverb256/sites into the path
+#      pipeline.py hardcodes for publishing
+#   5. venv + editable install, then the repo's own pipeline_runner.sh
+# Step 4 exists so a publish is a real push rather than the silent no-op that
+# pipeline.py currently returns when the clone is missing (task #29.3).
+# COMFYUI_URL (nexus:8188) is added to the `pipeline` env when a GPU window is
+# approved; image gen is skipped until then.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Release.Name }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  timeZone: {{ .Values.timeZone | quote }}
+  suspend: {{ .Values.suspend }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: {{ .Values.job.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.job.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: {{ .Values.job.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.job.backoffLimit }}
+      ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+      template:
+        metadata:
+          labels:
+            app: {{ .Release.Name }}
+        spec:
+          serviceAccountName: {{ .Release.Name }}
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: kubernetes.io/hostname
+                        operator: In
+                        values: ["nexus", "sentry-agent"]
+          initContainers:
+            - name: clone
+              image: {{ .Values.image.python | quote }}
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  set -a
+                  . /etc/site-agency/.env
+                  set +a
+                  : "${GITHUB_TOKEN:?GITHUB_TOKEN missing from site-agency-env}"
+                  echo "[site-agency] cloning pipeline repo"
+                  git clone --depth=1 --branch "{{ .Values.git.agencyBranch }}" \
+                    "https://x-access-token:${GITHUB_TOKEN}@github.com/reverb256/site-agency.git" /repo
+                  cp /etc/site-agency/.env /repo/.env
+                  chmod 600 /repo/.env
+                  echo "[site-agency] cloning publish surface"
+                  git clone --depth=1 --branch "${PUBLISH_BRANCH}" \
+                    "https://x-access-token:${GITHUB_TOKEN}@github.com/reverb256/sites.git" "${PUBLISH_PATH}"
+                  git -C "${PUBLISH_PATH}" config user.name "site-agency-bot"
+                  git -C "${PUBLISH_PATH}" config user.email "bot@reverb256.dev"
+                  echo "[site-agency] clones ready"
+              env:
+                - name: PUBLISH_BRANCH
+                  value: {{ .Values.git.publishBranch | quote }}
+                - name: PUBLISH_PATH
+                  value: {{ .Values.git.publishPath | quote }}
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: repo
+                  mountPath: /repo
+                - name: publish
+                  mountPath: {{ .Values.git.publishPath }}
+                - name: env-file
+                  mountPath: /etc/site-agency
+                  readOnly: true
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+          containers:
+            - name: pipeline
+              image: {{ .Values.image.python | quote }}
+              workingDir: /repo
+              env:
+                - name: SITE_AGENCY_REPO
+                  value: /repo
+                - name: PUBLISH_REPO_URL
+                  value: {{ .Values.git.publishRepo | quote }}
+                - name: PUBLISH_BRANCH
+                  value: {{ .Values.git.publishBranch | quote }}
+                - name: PUBLISH_PATH
+                  value: {{ .Values.git.publishPath | quote }}
+                - name: AGENCY_WORKDIR
+                  value: /repo/agency_output
+              command: ["/bin/bash", "-c"]
+              args:
+                - |
+                  set -euo pipefail
+                  echo "[site-agency] venv + deps"
+                  python -m venv /repo/.venv
+                  /repo/.venv/bin/pip install -q --no-input -e /repo
+                  echo "[site-agency] starting pipeline_runner.sh"
+                  bash /repo/pipeline_runner.sh
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: "2"
+                  memory: 2Gi
+              volumeMounts:
+                - name: repo
+                  mountPath: /repo
+                - name: env-file
+                  mountPath: /etc/site-agency
+                  readOnly: true
+                - name: output
+                  mountPath: /repo/agency_output
+                - name: publish
+                  mountPath: {{ .Values.git.publishPath }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: ["ALL"]
+          volumes:
+            - name: repo
+              emptyDir: {}
+            - name: publish
+              emptyDir: {}
+            - name: output
+              persistentVolumeClaim:
+                claimName: "{{ .Release.Name }}-output"
+            - name: env-file
+              secret:
+                secretName: {{ .Values.envSecret.name }}
+                items:
+                  - key: env
+                    path: .env
+                defaultMode: 0600

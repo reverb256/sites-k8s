@@ -1,0 +1,12 @@
+apiVersion: v2
+name: site-agency-pipeline
+description: >-
+  Scheduled site-agency pipeline run (source -> filter/audit -> generate ->
+  render -> verify -> preview deploy), hosted as a k8s CronJob on nexus/sentry.
+  Replaces the cron job that ran from the zephyr workstation checkout, under the
+  standing directive "never schedule on zephyr". Image generation is a separate
+  GPU-window concern and is skipped by this job (image gen errors are recorded,
+  not fatal).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

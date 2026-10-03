@@ -1,0 +1,67 @@
+# site-agency-pipeline - network policy (own namespace, breach containment).
+#
+# This namespace is NOT `sites`: the publishing static servers keep their tight
+# per-app scoping, and this outbound-only job does not widen it. The job needs
+# the open internet (GitHub push, LLM APIs, IMAP/SMTP), so egress is broad by
+# necessity, but it accepts ZERO inbound: no port is opened here, and the pod
+# exposes no service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: site-agency-pipeline-default-deny
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: site-agency-pipeline-allow-dns
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: site-agency-pipeline-allow-egress
+  namespace: {{ .Release.Namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Release.Name }}
+  policyTypes: [Egress]
+  egress:
+    # HTTPS to GitHub / LLM providers, IMAP(S)+SMTP for outreach monitoring,
+    # and 8188 for the nexus ComfyUI service when a GPU window is approved
+    # (image gen is skipped until then).
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 993
+        - protocol: TCP
+          port: 465
+        - protocol: TCP
+          port: 587
+        - protocol: TCP
+          port: 8188

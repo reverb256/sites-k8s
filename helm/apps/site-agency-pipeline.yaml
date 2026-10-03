@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: site-agency-pipeline
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: site-agency
+  source:
+    repoURL: https://github.com/reverb256/sites-k8s.git
+    targetRevision: main
+    path: helm/charts/site-agency-pipeline
+    helm:
+      releaseName: site-agency-pipeline
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - PruneLast=true
+      - CreateNamespace=true
+  ignoreDifferences:
+    - group: batch
+      kind: CronJob
+      jsonPointers:
+        - /metadata/annotations/argocd.argoproj.io~1refresh
